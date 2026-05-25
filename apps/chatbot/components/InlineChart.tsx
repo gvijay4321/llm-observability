@@ -51,7 +51,14 @@ interface Datum {
 
 function chartData(spec: ChartSpec, m: MetricsSummary): Datum[] {
   if (spec.series === 'providers') {
-    return m.byProvider.map((p) => ({ label: formatProvider(p.provider), value: p.requests }));
+    // byProvider is keyed by provider+model; collapse to one slice per provider.
+    const totals = new Map<string, number>();
+    for (const p of m.byProvider) {
+      totals.set(p.provider, (totals.get(p.provider) ?? 0) + p.requests);
+    }
+    return [...totals.entries()]
+      .map(([provider, value]) => ({ label: formatProvider(provider), value }))
+      .sort((a, b) => b.value - a.value);
   }
   const key = spec.series === 'latency' ? 'avgLatencyMs' : spec.series;
   return m.timeseries.map((t) => ({ label: fmtTime(t.bucket), value: t[key] }));
