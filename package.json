@@ -1,0 +1,37 @@
+{
+  "name": "llm-observability",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lightweight inference logging and ingestion system for an LLM chatbot application",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=@obs/shared && npm run build --workspace=@obs/sdk",
+    "dev:ingestion": "npm run dev --workspace=@obs/ingestion",
+    "dev:chatbot": "npm run dev --workspace=@obs/chatbot",
+    "dev": "concurrently -n ingestion,chatbot -c blue,green \"npm:dev:ingestion\" \"npm:dev:chatbot\"",
+    "migrate": "npm run migrate --workspace=@obs/ingestion",
+    "seed": "npm run seed --workspace=@obs/ingestion",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "eval": "tsx scripts/eval/run.ts",
+    "eval:no-judge": "tsx scripts/eval/run.ts --no-judge"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "dotenv": "^16.4.7",
+    "playwright": "^1.60.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "postcss": "8.5.10"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

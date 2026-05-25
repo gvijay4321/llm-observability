@@ -1,0 +1,27 @@
+# ── Chatbot (Next.js) image ─────────────────────────────────────────────────
+# Build context is the repo root (see docker-compose.yml).
+FROM node:20-bookworm-slim
+
+WORKDIR /app
+
+# Lockfile + workspace package.json files first so `npm install` layer caches
+# across source-only changes.
+COPY package.json package-lock.json* tsconfig.base.json ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/sdk/package.json packages/sdk/
+COPY apps/chatbot/package.json apps/chatbot/
+RUN npm install
+
+# Now bring in source and build the workspaces + the Next.js app.
+COPY packages/shared ./packages/shared
+COPY packages/sdk ./packages/sdk
+COPY apps/chatbot ./apps/chatbot
+RUN npm run build --workspace=@obs/shared \
+  && npm run build --workspace=@obs/sdk \
+  && npm run build --workspace=@obs/chatbot
+
+USER node
+ENV NODE_ENV=production
+ENV PORT=3000
+EXPOSE 3000
+CMD ["npm", "run", "start", "--workspace=@obs/chatbot"]

@@ -1,0 +1,115 @@
+# One-command stack:  docker compose up --build
+# Reads variables (GEMINI_API_KEY, LLM_PROVIDER, ...) from the root .env file.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: obs
+      POSTGRES_PASSWORD: obs
+      POSTGRES_DB: observability
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U obs -d observability']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ingestion:
+    build:
+      context: .
+      dockerfile: Dockerfile.ingestion
+    environment:
+      INGESTION_PORT: 4000
+      INGESTION_API_KEY: ${INGESTION_API_KEY:-dev-ingest-key}
+      DATABASE_URL: postgres://obs:obs@postgres:5432/observability
+      QUEUE_DRIVER: redis
+      REDIS_URL: redis://redis:6379
+      PROMETHEUS_PORT: 9464
+    ports:
+      - '4000:4000'
+      # OpenTelemetry / Prometheus scrape endpoint for the ingestion service.
+      - '9464:9464'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # Inline node check — slim base has no curl/wget.
+      test: ['CMD', 'node', '-e', "require('http').get('http://localhost:4000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  chatbot:
+    build:
+      context: .
+      dockerfile: Dockerfile.chatbot
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      LLM_MODEL: ${LLM_MODEL:-gemini-2.5-flash}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+      INGESTION_URL: http://ingestion:4000
+      INGESTION_API_KEY: ${INGESTION_API_KEY:-dev-ingest-key}
+      CHATBOT_PROMETHEUS_PORT: 9465
+    ports:
+      - '3000:3000'
+      # Prometheus scrape endpoint for the chatbot's /api/chat metrics.
+      - '9465:9465'
+    depends_on:
+      ingestion:
+        condition: service_healthy
+
+  # ---- Observability stack (Prometheus + Grafana) -------------------------
+  # Prometheus scrapes the two scrape ports (9464, 9465) every 5s. Grafana
+  # is auto-provisioned with the Prometheus datasource and the dashboard
+  # under infra/grafana/.
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - '9090:9090'
+    depends_on:
+      - ingestion
+      - chatbot
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_DEFAULT_THEME: dark
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - '3001:3000'
+    depends_on:
+      - prometheus
+
+volumes:
+  pgdata:
+  prometheus-data:
+  grafana-data:

@@ -1,0 +1,36 @@
+# ── Ingestion service image ────────────────────────────────────────────────
+# Build context is the repo root (see docker-compose.yml).
+FROM node:20-bookworm-slim AS builder
+
+# Toolchain so better-sqlite3 can compile if no prebuilt binary is available.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install dependencies for just the workspaces this service needs. npm needs
+# the workspace dirs on disk to resolve the workspace tree correctly, so we
+# copy them before `npm install`.
+COPY package.json package-lock.json* tsconfig.base.json ./
+COPY packages ./packages
+COPY apps/ingestion ./apps/ingestion
+RUN npm install
+
+# Compile shared types + the service.
+RUN npm run build --workspace=@obs/shared \
+  && npm run build --workspace=@obs/ingestion
+
+# ── Runtime image: dist + node_modules only, no build toolchain ─────────────
+FROM node:20-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=builder /app/package.json /app/package-lock.json* ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/apps/ingestion ./apps/ingestion
+
+USER node
+EXPOSE 4000
+CMD ["node", "apps/ingestion/dist/index.js"]

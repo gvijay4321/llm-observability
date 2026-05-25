@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingestion
+  namespace: llm-obs
+spec:
+  replicas: 2 # stateless behind the queue - safe to scale horizontally
+  selector:
+    matchLabels: { app: ingestion }
+  template:
+    metadata:
+      labels: { app: ingestion }
+      # Scraped by a Prometheus operator / kube-prometheus stack if installed.
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '9464'
+        prometheus.io/path: '/metrics'
+    spec:
+      containers:
+        - name: ingestion
+          image: llm-obs/ingestion:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4000
+            - containerPort: 9464
+              name: metrics
+          envFrom:
+            - configMapRef: { name: obs-config }
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: obs-secrets, key: DATABASE_URL }
+            - name: INGESTION_API_KEY
+              valueFrom:
+                secretKeyRef: { name: obs-secrets, key: INGESTION_API_KEY }
+          readinessProbe:
+            httpGet: { path: /ready, port: 4000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: 4000 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests: { cpu: '100m', memory: '128Mi' }
+            limits: { cpu: '500m', memory: '512Mi' }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingestion
+  namespace: llm-obs
+spec:
+  selector: { app: ingestion }
+  ports:
+    - port: 4000
+      targetPort: 4000
+      name: http
+    - port: 9464
+      targetPort: 9464
+      name: metrics
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ingestion
+  namespace: llm-obs
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ingestion
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

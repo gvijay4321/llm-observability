@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: obs-config
+  namespace: llm-obs
+data:
+  LLM_PROVIDER: 'gemini'
+  LLM_MODEL: 'gemini-2.5-flash'
+  QUEUE_DRIVER: 'redis'
+  REDIS_URL: 'redis://redis:6379'
+  INGESTION_URL: 'http://ingestion:4000'
+  INGESTION_PORT: '4000'
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: obs-secrets
+  namespace: llm-obs
+type: Opaque
+stringData:
+  # Demo defaults for in-cluster wiring. Provider credentials are NOT included
+  # here on purpose — use deploy-k8s.ps1 -GeminiApiKey ... (or `kubectl create
+  # secret generic obs-secrets --from-literal=GEMINI_API_KEY=... -o yaml | kubectl apply`)
+  # so a real key is required before the chatbot pod starts.
+  GEMINI_API_KEY: ''
+  INGESTION_API_KEY: 'change-me-in-prod'
+  DATABASE_URL: 'postgres://obs:obs@postgres:5432/observability'
+  POSTGRES_PASSWORD: 'obs'

@@ -1,0 +1,31 @@
+node_modules/
+dist/
+build/
+.next/
+out/
+coverage/
+eval-results/
+
+# Environment
+.env
+.env.local
+*.local
+
+# Database
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+data/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.tsbuildinfo

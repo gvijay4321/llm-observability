@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: Build, typecheck & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build workspace packages
+        run: |
+          npm run build --workspace=@obs/shared
+          npm run build --workspace=@obs/sdk
+          npm run build --workspace=@obs/ingestion
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build chatbot (Next.js — includes type checking)
+        run: npm run build --workspace=@obs/chatbot
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+
+  docker-build:
+    name: Validate Docker images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build ingestion image
+        run: docker build -f Dockerfile.ingestion -t llm-obs/ingestion:ci .
+
+      - name: Build chatbot image
+        run: docker build -f Dockerfile.chatbot -t llm-obs/chatbot:ci .

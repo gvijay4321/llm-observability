@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chatbot
+  namespace: llm-obs
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: chatbot }
+  template:
+    metadata:
+      labels: { app: chatbot }
+    spec:
+      containers:
+        - name: chatbot
+          image: llm-obs/chatbot:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef: { name: obs-config }
+          env:
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef: { name: obs-secrets, key: GEMINI_API_KEY }
+            - name: INGESTION_API_KEY
+              valueFrom:
+                secretKeyRef: { name: obs-secrets, key: INGESTION_API_KEY }
+          readinessProbe:
+            httpGet: { path: /api/health, port: 3000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: 3000 }
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests: { cpu: '100m', memory: '256Mi' }
+            limits: { cpu: '1', memory: '768Mi' }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chatbot
+  namespace: llm-obs
+spec:
+  selector: { app: chatbot }
+  ports:
+    - port: 80
+      targetPort: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: chatbot
+  namespace: llm-obs
+  annotations:
+    # Adjust to your self-hosted ingress controller (nginx / traefik).
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '300'
+    nginx.ingress.kubernetes.io/proxy-buffering: 'off' # keep SSE streaming
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: chat.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: chatbot
+                port:
+                  number: 80

@@ -1,0 +1,22 @@
+# Prometheus scrape config for the docker-compose stack.
+# Both services expose OTel meters via @opentelemetry/exporter-prometheus.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: obs-ingestion
+    static_configs:
+      - targets: ['ingestion:9464']
+        labels:
+          service: ingestion
+
+  - job_name: obs-chatbot
+    static_configs:
+      - targets: ['chatbot:9465']
+        labels:
+          service: chatbot
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
